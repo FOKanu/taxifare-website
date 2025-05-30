@@ -70,28 +70,37 @@ with st.sidebar:
     pickup_address = st.text_input("Pickup Location", placeholder="Enter pickup address", key="pickup")
     dropoff_address = st.text_input("Dropoff Location", placeholder="Enter dropoff address", key="dropoff")
 
-    # Autocomplete suggestions
+    # Initialize session state for suggestions if not exists
+    if 'pickup_suggestions' not in st.session_state:
+        st.session_state.pickup_suggestions = []
+    if 'dropoff_suggestions' not in st.session_state:
+        st.session_state.dropoff_suggestions = []
+
+    # Handle pickup suggestions
     if pickup_address:
         try:
             pickup_autocomplete = gmaps.places_autocomplete(pickup_address)
             if pickup_autocomplete:
+                st.session_state.pickup_suggestions = pickup_autocomplete[:3]
                 st.write("Suggestions:")
-                for place in pickup_autocomplete[:3]:
-                    if st.button(f"📍 {place['description']}", key=f"pickup_{place['place_id']}"):
-                        pickup_address = place['description']
-                        st.session_state.pickup = pickup_address
+                for i, place in enumerate(st.session_state.pickup_suggestions):
+                    if st.button(f"📍 {place['description']}", key=f"pickup_{i}"):
+                        st.session_state.pickup = place['description']
+                        st.rerun()
         except Exception as e:
             st.error(f"Error getting suggestions: {e}")
 
+    # Handle dropoff suggestions
     if dropoff_address:
         try:
             dropoff_autocomplete = gmaps.places_autocomplete(dropoff_address)
             if dropoff_autocomplete:
+                st.session_state.dropoff_suggestions = dropoff_autocomplete[:3]
                 st.write("Suggestions:")
-                for place in dropoff_autocomplete[:3]:
-                    if st.button(f"📍 {place['description']}", key=f"dropoff_{place['place_id']}"):
-                        dropoff_address = place['description']
-                        st.session_state.dropoff = dropoff_address
+                for i, place in enumerate(st.session_state.dropoff_suggestions):
+                    if st.button(f"📍 {place['description']}", key=f"dropoff_{i}"):
+                        st.session_state.dropoff = place['description']
+                        st.rerun()
         except Exception as e:
             st.error(f"Error getting suggestions: {e}")
 
