@@ -13,7 +13,9 @@ st.markdown(
 
 with st.sidebar:
     st.header("Ride Details")
-    pickup_datetime = st.datetime_input("Pickup Date & Time", value=datetime.now())
+    pickup_date = st.date_input("Pickup Date", value=datetime.now().date())
+    pickup_time = st.time_input("Pickup Time", value=datetime.now().time())
+    pickup_datetime = datetime.combine(pickup_date, pickup_time)
     pickup_longitude = st.number_input("Pickup Longitude", value=-73.985428, format="%.6f")
     pickup_latitude = st.number_input("Pickup Latitude", value=40.748817, format="%.6f")
     dropoff_longitude = st.number_input("Dropoff Longitude", value=-73.985428, format="%.6f")
