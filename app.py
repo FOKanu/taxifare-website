@@ -8,6 +8,7 @@ from streamlit_folium import folium_static
 import json
 import random
 import time
+from streamlit_autocomplete import autocomplete
 
 # Initialize Google Maps client
 gmaps = googlemaps.Client(key=GOOGLE_MAPS_API_KEY)
@@ -42,6 +43,10 @@ st.markdown("""
         overflow: hidden;
         box-shadow: 0 0 10px rgba(0,0,0,0.1);
     }
+    .autocomplete-container {
+        position: relative;
+        margin-bottom: 1rem;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -66,51 +71,39 @@ if 'recent_locations' not in st.session_state:
 with st.sidebar:
     st.header("Ride Details")
 
+    # Function to get place suggestions
+    def get_place_suggestions(query):
+        try:
+            if query:
+                suggestions = gmaps.places_autocomplete(query)
+                return [place['description'] for place in suggestions[:5]]
+            return []
+        except Exception as e:
+            st.error(f"Error getting suggestions: {e}")
+            return []
+
     # Location inputs with autocomplete
-    pickup_address = st.text_input("Pickup Location", placeholder="Enter pickup address", key="pickup")
-    dropoff_address = st.text_input("Dropoff Location", placeholder="Enter dropoff address", key="dropoff")
+    pickup_address = autocomplete(
+        label="Pickup Location",
+        options=get_place_suggestions,
+        key="pickup",
+        placeholder="Enter pickup address"
+    )
 
-    # Initialize session state for suggestions if not exists
-    if 'pickup_suggestions' not in st.session_state:
-        st.session_state.pickup_suggestions = []
-    if 'dropoff_suggestions' not in st.session_state:
-        st.session_state.dropoff_suggestions = []
-
-    # Handle pickup suggestions
-    if pickup_address:
-        try:
-            pickup_autocomplete = gmaps.places_autocomplete(pickup_address)
-            if pickup_autocomplete:
-                st.session_state.pickup_suggestions = pickup_autocomplete[:3]
-                st.write("Suggestions:")
-                for i, place in enumerate(st.session_state.pickup_suggestions):
-                    if st.button(f"📍 {place['description']}", key=f"pickup_{i}"):
-                        st.session_state.pickup = place['description']
-                        st.rerun()
-        except Exception as e:
-            st.error(f"Error getting suggestions: {e}")
-
-    # Handle dropoff suggestions
-    if dropoff_address:
-        try:
-            dropoff_autocomplete = gmaps.places_autocomplete(dropoff_address)
-            if dropoff_autocomplete:
-                st.session_state.dropoff_suggestions = dropoff_autocomplete[:3]
-                st.write("Suggestions:")
-                for i, place in enumerate(st.session_state.dropoff_suggestions):
-                    if st.button(f"📍 {place['description']}", key=f"dropoff_{i}"):
-                        st.session_state.dropoff = place['description']
-                        st.rerun()
-        except Exception as e:
-            st.error(f"Error getting suggestions: {e}")
+    dropoff_address = autocomplete(
+        label="Dropoff Location",
+        options=get_place_suggestions,
+        key="dropoff",
+        placeholder="Enter dropoff address"
+    )
 
     # Recent locations
     if st.session_state.recent_locations:
         st.subheader("Recent Locations")
         for loc in st.session_state.recent_locations:
             if st.button(f"📍 {loc}", key=f"recent_{loc}"):
-                pickup_address = loc
-                st.session_state.pickup = pickup_address
+                st.session_state.pickup = loc
+                st.rerun()
 
     # Date and time
     pickup_date = st.date_input("Pickup Date", value=datetime.now().date())
