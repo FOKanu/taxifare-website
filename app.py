@@ -1,12 +1,14 @@
 import streamlit as st
 import requests
 from datetime import datetime
-from geopy.geocoders import Nominatim
-from geopy.distance import geodesic
-import time
+import googlemaps
+from config import GOOGLE_MAPS_API_KEY
+import folium
+from streamlit_folium import folium_static
+import json
 
-# Initialize geocoder
-geolocator = Nominatim(user_agent="taxi_fare_app")
+# Initialize Google Maps client
+gmaps = googlemaps.Client(key=GOOGLE_MAPS_API_KEY)
 
 # Page config
 st.set_page_config(
@@ -30,6 +32,9 @@ st.markdown("""
         border-radius: 10px;
         margin: 0.5rem 0;
     }
+    .location-input {
+        margin-bottom: 1rem;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -48,9 +53,34 @@ if 'recent_locations' not in st.session_state:
 with st.sidebar:
     st.header("Ride Details")
 
-    # Location inputs
-    pickup_address = st.text_input("Pickup Location", placeholder="Enter pickup address")
-    dropoff_address = st.text_input("Dropoff Location", placeholder="Enter dropoff address")
+    # Location inputs with autocomplete
+    pickup_address = st.text_input("Pickup Location", placeholder="Enter pickup address", key="pickup")
+    dropoff_address = st.text_input("Dropoff Location", placeholder="Enter dropoff address", key="dropoff")
+
+    # Autocomplete suggestions
+    if pickup_address:
+        try:
+            pickup_autocomplete = gmaps.places_autocomplete(pickup_address)
+            if pickup_autocomplete:
+                st.write("Suggestions:")
+                for place in pickup_autocomplete[:3]:
+                    if st.button(f"📍 {place['description']}", key=f"pickup_{place['place_id']}"):
+                        pickup_address = place['description']
+                        st.session_state.pickup = pickup_address
+        except Exception as e:
+            st.error(f"Error getting suggestions: {e}")
+
+    if dropoff_address:
+        try:
+            dropoff_autocomplete = gmaps.places_autocomplete(dropoff_address)
+            if dropoff_autocomplete:
+                st.write("Suggestions:")
+                for place in dropoff_autocomplete[:3]:
+                    if st.button(f"📍 {place['description']}", key=f"dropoff_{place['place_id']}"):
+                        dropoff_address = place['description']
+                        st.session_state.dropoff = dropoff_address
+        except Exception as e:
+            st.error(f"Error getting suggestions: {e}")
 
     # Recent locations
     if st.session_state.recent_locations:
@@ -58,6 +88,7 @@ with st.sidebar:
         for loc in st.session_state.recent_locations:
             if st.button(f"📍 {loc}", key=f"recent_{loc}"):
                 pickup_address = loc
+                st.session_state.pickup = pickup_address
 
     # Date and time
     pickup_date = st.date_input("Pickup Date", value=datetime.now().date())
@@ -87,30 +118,54 @@ with st.sidebar:
 col1, col2 = st.columns([2, 1])
 
 with col1:
-    # Map placeholder (you can integrate actual map here)
+    # Map visualization
     st.subheader("Route Map")
-    st.info("Map view will be displayed here")
-
-    # Ride summary
-    st.subheader("Ride Summary")
     if pickup_address and dropoff_address:
         try:
             # Geocode addresses
-            pickup_location = geolocator.geocode(pickup_address)
-            dropoff_location = geolocator.geocode(dropoff_address)
+            pickup_location = gmaps.geocode(pickup_address)[0]['geometry']['location']
+            dropoff_location = gmaps.geocode(dropoff_address)[0]['geometry']['location']
 
-            if pickup_location and dropoff_location:
-                # Calculate distance
-                distance = geodesic(
-                    (pickup_location.latitude, pickup_location.longitude),
-                    (dropoff_location.latitude, dropoff_location.longitude)
-                ).kilometers
+            # Get directions
+            directions = gmaps.directions(
+                pickup_address,
+                dropoff_address,
+                mode="driving",
+                departure_time=datetime.now()
+            )
 
-                # Estimate time (assuming average speed of 30 km/h)
-                estimated_time = distance / 30 * 60  # in minutes
+            if directions:
+                # Create map
+                m = folium.Map(
+                    location=[(pickup_location['lat'] + dropoff_location['lat'])/2,
+                            (pickup_location['lng'] + dropoff_location['lng'])/2],
+                    zoom_start=12
+                )
 
-                st.write(f"**Distance:** {distance:.1f} km")
-                st.write(f"**Estimated Time:** {int(estimated_time)} minutes")
+                # Add markers
+                folium.Marker(
+                    [pickup_location['lat'], pickup_location['lng']],
+                    popup="Pickup",
+                    icon=folium.Icon(color='green', icon='info-sign')
+                ).add_to(m)
+
+                folium.Marker(
+                    [dropoff_location['lat'], dropoff_location['lng']],
+                    popup="Dropoff",
+                    icon=folium.Icon(color='red', icon='info-sign')
+                ).add_to(m)
+
+                # Add route
+                route = directions[0]['overview_polyline']['points']
+                folium.PolyLine(
+                    locations=folium.util.decode_polyline(route),
+                    color='blue',
+                    weight=2,
+                    opacity=0.8
+                ).add_to(m)
+
+                # Display map
+                folium_static(m)
 
                 # Store in session state
                 if pickup_address not in st.session_state.recent_locations:
@@ -121,7 +176,9 @@ with col1:
                 # Keep only last 5 locations
                 st.session_state.recent_locations = st.session_state.recent_locations[-5:]
         except Exception as e:
-            st.error(f"Error geocoding addresses: {e}")
+            st.error(f"Error displaying map: {e}")
+    else:
+        st.info("Enter pickup and dropoff locations to see the route map")
 
 with col2:
     # Fare estimate
@@ -129,24 +186,21 @@ with col2:
     if st.button("Get Fare Estimate"):
         if pickup_address and dropoff_address:
             try:
-                # Geocode addresses
-                pickup_location = geolocator.geocode(pickup_address)
-                dropoff_location = geolocator.geocode(dropoff_address)
+                # Get directions for distance and duration
+                directions = gmaps.directions(
+                    pickup_address,
+                    dropoff_address,
+                    mode="driving",
+                    departure_time=datetime.now()
+                )
 
-                if pickup_location and dropoff_location:
-                    params = {
-                        "pickup_datetime": pickup_datetime.strftime("%Y-%m-%d %H:%M:%S"),
-                        "pickup_longitude": pickup_location.longitude,
-                        "pickup_latitude": pickup_location.latitude,
-                        "dropoff_longitude": dropoff_location.longitude,
-                        "dropoff_latitude": dropoff_location.latitude,
-                        "passenger_count": passenger_count,
-                    }
+                if directions:
+                    # Extract distance and duration
+                    distance = directions[0]['legs'][0]['distance']['value'] / 1000  # Convert to km
+                    duration = directions[0]['legs'][0]['duration']['value'] / 60  # Convert to minutes
 
-                    api_url = "https://taxifare.lewagon.ai/predict"
-                    response = requests.get(api_url, params=params)
-                    response.raise_for_status()
-                    base_fare = response.json().get("fare", 0)
+                    # Calculate base fare (example formula)
+                    base_fare = 2.50 + (distance * 1.50) + (duration * 0.25)
 
                     # Apply ride type multiplier
                     multipliers = {
@@ -163,13 +217,15 @@ with col2:
                     st.write(f"- Base fare: ${base_fare:.2f}")
                     st.write(f"- {ride_type} multiplier: x{multipliers[ride_type]}")
                     st.write(f"- Payment method: {payment_method}")
+                    st.write(f"- Distance: {distance:.1f} km")
+                    st.write(f"- Estimated duration: {int(duration)} minutes")
 
                     # Book ride button
                     if st.button("Book Ride"):
                         st.balloons()
                         st.success("Ride booked successfully! 🎉")
                 else:
-                    st.error("Could not find the specified locations. Please check the addresses.")
+                    st.error("Could not calculate route. Please check the addresses.")
             except Exception as e:
                 st.error(f"Error calculating fare: {e}")
         else:
