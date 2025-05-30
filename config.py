@@ -1,2 +1,4 @@
+import os
+
 # Google Maps API Configuration
-GOOGLE_MAPS_API_KEY = "YOUR_API_KEY_HERE"  # Replace with your actual API key
+GOOGLE_MAPS_API_KEY = os.getenv('GOOGLE_MAPS_API_KEY', '')  # Get API key from environment variable
