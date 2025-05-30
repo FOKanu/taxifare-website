@@ -6,4 +6,3 @@ requests==2.32.3
 branca==0.8.1
 xyzservices==2025.4.0
 toml==0.10.2
-streamlit-autocomplete==0.1.0
