@@ -6,6 +6,8 @@ from config import GOOGLE_MAPS_API_KEY
 import folium
 from streamlit_folium import folium_static
 import json
+import random
+import time
 
 # Initialize Google Maps client
 gmaps = googlemaps.Client(key=GOOGLE_MAPS_API_KEY)
@@ -35,8 +37,19 @@ st.markdown("""
     .location-input {
         margin-bottom: 1rem;
     }
+    .map-container {
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
     </style>
     """, unsafe_allow_html=True)
+
+# Initialize session state for map
+if 'map_center' not in st.session_state:
+    st.session_state.map_center = [40.7128, -74.0060]  # Default to New York City
+if 'zoom_level' not in st.session_state:
+    st.session_state.zoom_level = 12
 
 # Title and description
 st.title("🚕 Taxi Fare Comparator")
@@ -139,33 +152,74 @@ with col1:
                 m = folium.Map(
                     location=[(pickup_location['lat'] + dropoff_location['lat'])/2,
                             (pickup_location['lng'] + dropoff_location['lng'])/2],
-                    zoom_start=12
+                    zoom_start=12,
+                    tiles='CartoDB positron'
                 )
 
-                # Add markers
+                # Add pickup marker
                 folium.Marker(
                     [pickup_location['lat'], pickup_location['lng']],
-                    popup="Pickup",
-                    icon=folium.Icon(color='green', icon='info-sign')
+                    popup="Pickup Location",
+                    icon=folium.Icon(color='green', icon='info-sign', prefix='fa')
                 ).add_to(m)
 
+                # Add dropoff marker
                 folium.Marker(
                     [dropoff_location['lat'], dropoff_location['lng']],
-                    popup="Dropoff",
-                    icon=folium.Icon(color='red', icon='info-sign')
+                    popup="Dropoff Location",
+                    icon=folium.Icon(color='red', icon='info-sign', prefix='fa')
                 ).add_to(m)
 
-                # Add route
+                # Simulate nearby taxis
+                for _ in range(3):
+                    taxi_lat = pickup_location['lat'] + random.uniform(-0.01, 0.01)
+                    taxi_lng = pickup_location['lng'] + random.uniform(-0.01, 0.01)
+                    folium.Marker(
+                        [taxi_lat, taxi_lng],
+                        popup="Available Taxi",
+                        icon=folium.Icon(color='blue', icon='car', prefix='fa')
+                    ).add_to(m)
+
+                # Add route with detailed steps
                 route = directions[0]['overview_polyline']['points']
                 folium.PolyLine(
                     locations=folium.util.decode_polyline(route),
                     color='blue',
-                    weight=2,
+                    weight=4,
                     opacity=0.8
                 ).add_to(m)
 
-                # Display map
-                folium_static(m)
+                # Add route steps
+                for step in directions[0]['legs'][0]['steps']:
+                    start_location = step['start_location']
+                    end_location = step['end_location']
+                    folium.PolyLine(
+                        locations=[
+                            [start_location['lat'], start_location['lng']],
+                            [end_location['lat'], end_location['lng']]
+                        ],
+                        color='green',
+                        weight=2,
+                        opacity=0.5
+                    ).add_to(m)
+
+                # Add distance circles
+                folium.Circle(
+                    location=[pickup_location['lat'], pickup_location['lng']],
+                    radius=1000,  # 1km radius
+                    color='green',
+                    fill=True,
+                    fill_opacity=0.1
+                ).add_to(m)
+
+                # Add map controls
+                folium.LayerControl().add_to(m)
+
+                # Display map in a container
+                with st.container():
+                    st.markdown('<div class="map-container">', unsafe_allow_html=True)
+                    folium_static(m, width=800, height=600)
+                    st.markdown('</div>', unsafe_allow_html=True)
 
                 # Store in session state
                 if pickup_address not in st.session_state.recent_locations:
